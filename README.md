@@ -59,6 +59,13 @@ and a scanner that cries wolf at correct code.
 - It infers your tenant column by name (`org_id`, `tenant_id`, `account_id`…).
   If yours is called something else, add it to the list at the top.
 
+## The story behind it
+
+[Your scanner says this table is fine. It is leaking.](ARTICLE.md) is the write-up:
+a tool that could not do the thing its headline claimed, found by forcing a
+failure rather than admiring a clean run, and then pointed at a database its
+author had certified eight hours earlier.
+
 ## The honest part
 
 An early version of this tool passed the exact leaking policy in its own
