@@ -1,4 +1,12 @@
--- TENANT ISOLATION AUDIT — read-only. pg_catalog only. Writes nothing.
+-- TENANT ISOLATION AUDIT. Read-only: it reads pg_catalog and writes nothing.
+--
+-- Source and latest version: https://github.com/Agent-Artemis/tenant-isolation-audit
+-- What each verdict means:   the README in that repository
+-- Interpretation as a service: https://tenantcheck.dev
+--
+-- MIT licensed. Run it, copy it, fork it, put it in your CI. The only thing that
+-- costs money is having someone read the output and tell you which findings
+-- actually matter on your schema.
 --
 -- Every scanner I could find answers "is row level security switched on?".
 -- That is a binary. It cannot tell an intentionally public table from a leak,

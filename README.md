@@ -2,15 +2,20 @@
 
 **Can one customer of your app read another customer's rows?**
 
+One SQL file, read-only, no install and no account. Reads `pg_catalog` and never
+touches your data. MIT licensed. If you want the output read by someone who will
+tell you which findings matter on your schema, that part is at
+[tenantcheck.dev](https://tenantcheck.dev).
+
 Every Postgres and Supabase security scanner I could find answers a different
 question: *is row level security switched on?* That is a binary, it cannot tell
-an intentionally public table from a leak, and the tools say so themselves —
-they document their own false positives.
+an intentionally public table from a leak, and the tools say so themselves. They
+document their own false positives.
 
 This asks the question you actually care about, and it is not the same one.
 A table can have RLS enabled, a policy that looks right, **and still hand every
-row to the wrong customer** — because Postgres combines permissive policies
-with `OR`. One unscoped policy grants everything the scoped ones withhold.
+row to the wrong customer**, because Postgres combines permissive policies with
+`OR`. One unscoped policy grants everything the scoped ones withhold.
 
 ## Run it
 
@@ -61,8 +66,8 @@ and a scanner that cries wolf at correct code.
 
 - The `OR` split is textual, so `A AND (B OR C)` loses its `AND` context and is
   **over**-reported as `CHECK`. It never under-reports.
-- A policy can be safe for a reason its own text does not contain — a subquery
-  constrained by another table's RLS, for instance. Static analysis cannot see
+- A policy can be safe for a reason its own text does not contain. A subquery
+  constrained by another table's RLS is one. Static analysis cannot see
   transitive protection. That is why `CHECK` means look.
 - It infers your tenant column by name (`org_id`, `tenant_id`, `account_id`…).
   If yours is called something else, add it to the list at the top.
@@ -83,15 +88,15 @@ against clean databases dozens of times and looked excellent.
 
 **It was only caught by putting a real leak back into a database and
 checking whether the tool noticed.** It did not. A checker that has never been
-shown a failure is a checker with an unknown pass rate — including this one, on
-your schema. Force a leak and watch it fire before you trust it.
+shown a failure is a checker with an unknown pass rate. That includes this one,
+on your schema. Force a leak and watch it fire before you trust it.
 
 ## Static analysis is where you start, not where you stop
 
 The strongest check is not reading policies at all. Create a second tenant
 inside a transaction you roll back, give it **one user per role shape you
-actually have** — admin, supervisor, owner, group member — and count the rows
-each can reach that belong to somebody else.
+actually have**, meaning admin, supervisor, owner and group member, then count
+the rows each can reach that belong to somebody else.
 
 **The expected answer is a column of zeros**, and write down which role shapes
 you tested beside it. A zero with no scope attached is how this tool's author
