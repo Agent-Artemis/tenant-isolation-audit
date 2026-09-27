@@ -1,0 +1,12 @@
+{
+  "name": "tenant-isolation-audit-mcp",
+  "version": "0.2.0",
+  "description": "Hands an agent the tenant-isolation audit SQL and interprets the rows it pastes back. Never accepts a credential and has no database driver.",
+  "type": "module",
+  "bin": { "tenant-isolation-audit-mcp": "mcp/src/index.js" },
+  "scripts": { "test": "node mcp/test.js" },
+  "files": ["mcp/src", "tenant_isolation_audit.sql", "README.md", "check-verdicts.sh"],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/Agent-Artemis/tenant-isolation-audit.git" },
+  "dependencies": { "@modelcontextprotocol/sdk": "^1.0.0" }
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.agent-artemis/tenant-isolation-audit",
+  "description": "Hands you the read-only SQL that answers whether one customer of your app can read another customer's rows, and interprets the results you run yourself. Never accepts a credential and has no database driver.",
+  "version": "0.2.0",
+  "repository": { "url": "https://github.com/Agent-Artemis/tenant-isolation-audit", "source": "github" },
+  "packages": [
+    { "registryType": "npm", "identifier": "tenant-isolation-audit-mcp", "version": "0.2.0",
+      "transport": { "type": "stdio" } }
+  ]
+}
