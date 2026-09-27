@@ -72,6 +72,14 @@ and a scanner that cries wolf at correct code.
 - It infers your tenant column by name (`org_id`, `tenant_id`, `account_id`…).
   If yours is called something else, add it to the list at the top.
 
+## Also worth reading
+
+**[Row level security is on. Nobody can read the table. Which of those is the
+bug?](DEAD-TABLES.md)** What the `DEAD` verdict means, why the table owner and the
+service role still read every row while your users see an empty list, and the one
+question that settles it. Also published at
+[tenantcheck.dev/dead-tables.html](https://tenantcheck.dev/dead-tables.html).
+
 ## The story behind it
 
 [Your scanner says this table is fine. It is leaking.](ARTICLE.md) is the write-up:
