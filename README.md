@@ -28,14 +28,22 @@ Or paste it into the Supabase SQL editor.
 
 One row per table:
 
-| verdict | meaning |
-|---|---|
-| `LEAK` | **Certain.** RLS is off, or on with no policy at all. |
-| `CHECK` | A permissive policy that this analysis cannot prove scopes the tenant. **Look at it.** |
-| `INDIRECT` | The table reaches its tenant through a parent table. Not analysable statically — measure it. |
-| `ok` | Every permissive policy provably scopes tenant or owner. |
+| verdict | meaning | what to do |
+|---|---|---|
+| `LEAK` | **Certain.** Row level security is off, so every tenant can read every row. | Fix it. |
+| `DEAD` | RLS is on with **no policy at all**, so nothing but the service role can read the table. | **Ambiguous, and deliberately reported as such.** This is either a table locked down to the service role on purpose or a table that quietly stopped working. The audit cannot tell which. Confirm that nothing is supposed to be reading it. |
+| `CHECK` | A permissive policy this analysis cannot prove scopes the tenant. | Look at it. It is often fine. |
+| `INDIRECT` | The table has no tenant or owner column and reaches its tenant through a parent table. | Not decidable by reading policies. Measure it with a second tenant. |
+| `ok` | Every permissive policy provably scopes tenant or owner. | Nothing. |
 
-⛔ **Nothing is called a leak on a guess.** A flag means *look*, and only a
+Those five are the complete list. `check-verdicts.sh` in this directory fails if the
+SQL emits a verdict this table does not describe, or if the table describes one the
+SQL no longer emits. That guard exists because an earlier version emitted six
+verdicts and documented four, and it shipped that way until someone read the two
+files side by side. A verdict a reader cannot look up is the same failure this tool
+is built to catch: an answer that looks clean and is not.
+
+**Nothing is called a leak on a guess.** A flag means *look*, and only a
 measurement means *leak*. That distinction is the whole difference between this
 and a scanner that cries wolf at correct code.
 
@@ -73,7 +81,7 @@ documentation as safe, because it checked whether a policy *mentioned* the
 tenant instead of whether every branch *constrained* it. It had been run
 against clean databases dozens of times and looked excellent.
 
-⭐ **It was only caught by putting a real leak back into a database and
+**It was only caught by putting a real leak back into a database and
 checking whether the tool noticed.** It did not. A checker that has never been
 shown a failure is a checker with an unknown pass rate — including this one, on
 your schema. Force a leak and watch it fire before you trust it.

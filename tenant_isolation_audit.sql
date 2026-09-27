@@ -4,14 +4,14 @@
 -- That is a binary. It cannot tell an intentionally public table from a leak,
 -- which is why they all ship false positives and say so in their own docs.
 --
--- ⭐ THIS ASKS A DIFFERENT QUESTION: can one tenant read another tenant's rows?
+-- THIS ASKS A DIFFERENT QUESTION: can one tenant read another tenant's rows?
 -- A table can have RLS enabled AND a correct-looking policy AND still hand
 -- every row to the wrong customer, because POSTGRES COMBINES PERMISSIVE
 -- POLICIES WITH *OR*. One unscoped policy grants everything the scoped ones
 -- withhold. That is a real production bug I fixed this week, on a table every
 -- scanner marks green.
 --
--- ⚠️ AND THE HONEST LIMIT, STATED IN THE OUTPUT ITSELF: static analysis can
+-- AND THE HONEST LIMIT, STATED IN THE OUTPUT ITSELF: static analysis can
 -- only NARROW the list. A policy that calls a helper function, or scopes by
 -- owner instead of by tenant, is safe and looks suspicious. So nothing here is
 -- reported as a leak unless it is certain. Everything else is CHECK, and the
@@ -22,7 +22,7 @@
 --   INDIRECT → the table reaches its tenant through a parent; not analysable here
 --   ok       → every permissive policy provably scopes tenant or owner
 --
--- ⚠️ WHY 'CHECK' IS NOT 'LEAK', WITH A REAL EXAMPLE FROM THE FIRST LIVE RUN.
+-- WHY 'CHECK' IS NOT 'LEAK', WITH A REAL EXAMPLE FROM THE FIRST LIVE RUN.
 -- A policy can be safe for a reason its own text does not contain. One flagged
 -- here read
 --     user_id IN (SELECT id FROM users WHERE coach_id = <the caller>)
@@ -30,9 +30,9 @@
 -- runs as the caller and is itself constrained by the users table's own row
 -- level security, so it returns nobody from another tenant. Measured: zero
 -- cross-tenant rows.
--- ⭐ Static analysis cannot see transitive protection. That is exactly why a
+-- Static analysis cannot see transitive protection. That is exactly why a
 -- flag here means LOOK, and only a measurement means LEAK.
--- ⚠️ It is also worth knowing that such a policy is safe by DEPENDENCY: loosen
+-- It is also worth knowing that such a policy is safe by DEPENDENCY: loosen
 -- the parent table's RLS and it becomes a leak without itself changing.
 
 with settings as (
@@ -57,7 +57,7 @@ cols as (
            order by array_position(s.owner_cols, a.attname::text) limit 1) as owner_column
   from tables t
 ),
--- ⭐ THE PART NO OTHER TOOL DOES: resolve the helper functions a policy calls.
+-- THE PART NO OTHER TOOL DOES: resolve the helper functions a policy calls.
 -- A policy reading `app_user_in_my_org(user_id)` is perfectly scoped, and a
 -- regex over the policy text cannot see that. So the body of every callable
 -- function is inlined before the expression is judged.
@@ -81,38 +81,38 @@ expanded as (
          pl.expr || ' ' || coalesce(
            (select string_agg(f.body, ' ') from fn f
              where pl.expr like '%'||f.name||'(%'), '') as full_expr
-  -- ⛔ RIGHT JOIN, NOT INNER. A table with no policies produced no rows here
+  -- RIGHT JOIN, NOT INNER. A table with no policies produced no rows here
   -- and vanished from the report completely -- including a table with row
   -- level security switched off, which is the single most dangerous thing this
   -- tool can find. The most important row was the one that disappeared.
   from pol pl right join cols c on c.oid = pl.oid
 ),
--- ⭐⭐ THE CORE OF THE TOOL, AND THE PART THAT MAKES IT DIFFERENT.
+-- THE CORE OF THE TOOL, AND THE PART THAT MAKES IT DIFFERENT.
 -- A policy is NOT scoped because it MENTIONS the tenant. It is scoped only if
 -- EVERY branch of it constrains the tenant. Postgres ORs permissive policies
 -- together, and it also ORs the branches inside one policy, so
 --     (org_id = app_org()) OR (app_role() = 'admin')
 -- names the tenant and hands every row to any admin of any tenant.
 --
--- ⚠️ Two earlier versions of this file got this wrong in opposite directions.
+-- Two earlier versions of this file got this wrong in opposite directions.
 -- The first judged the whole expression and passed that policy as safe -- the
 -- exact production bug the tool exists to find. The second split the expression
 -- AFTER inlining helper bodies, which shredded the bodies into meaningless
 -- fragments and flagged twenty-six clean tables.
--- ⭐ The fix is to keep the two concerns apart: split only the POLICY on OR,
+-- The fix is to keep the two concerns apart: split only the POLICY on OR,
 -- and judge a fragment safe if it constrains the tenant itself OR calls a
 -- helper whose own body does.
 --
--- ⚠️ KNOWN LIMIT, STATED RATHER THAN HIDDEN. The split is textual, so a policy
+-- KNOWN LIMIT, STATED RATHER THAN HIDDEN. The split is textual, so a policy
 -- shaped `A AND (B OR C)` is cut at the inner OR and the AND context is lost.
 -- That over-reports: such a policy is flagged CHECK when it is in fact safe.
--- ⛔ It never under-reports, which is the direction that matters, and CHECK
+-- It never under-reports, which is the direction that matters, and CHECK
 -- means LOOK rather than LEAK. Depth-aware parsing belongs in the harness
 -- script, not in one SQL statement -- this is where SQL stops being the right
 -- tool, and pretending otherwise is how the last two versions went wrong.
 fn_scoped as (
   select f.name,
-         -- ⚠️ A HELPER IS TENANT-SCOPING ONLY IF ITS BODY CONSTRAINS AN
+         -- A HELPER IS TENANT-SCOPING ONLY IF ITS BODY CONSTRAINS AN
          -- ORGANISATION. Resolving the caller is NOT the same thing, and an
          -- earlier version treated it as equivalent: app_role() reads
          -- `where auth_id = auth.uid()`, so it looked tenant-scoped, and the
@@ -149,7 +149,7 @@ frag_judged as (
   from branches b
 ),
 judged as (
-  -- ⛔ ALL branches, not ANY. One unscoped branch is the leak.
+  -- ALL branches, not ANY. One unscoped branch is the leak.
   select policy_name, cmd, permissive, tbl, rls_on, tenant_column, owner_column,
          bool_and(frag_scoped) as scoped
   from frag_judged
@@ -166,13 +166,17 @@ select
     when not rls_on
       then 'LEAK — row level security is OFF, every tenant reads every row'
     when count(*) filter (where policy_name is not null) = 0
-      then 'DEAD — RLS on with no policies; nobody can read this table'
+    -- DEAD IS AMBIGUOUS AND THE TEXT SAYS SO. Row level security on with
+    -- no policy denies everyone, which is either a deliberate
+    -- service-role-only table or a table that quietly stopped working.
+    -- This cannot tell which, and a reader who is not told will assume
+    -- whichever suits him.
+      then 'DEAD — RLS on with NO policy, so nothing but the service role can '
+           'read it. Deliberate lock-down or a broken table; this cannot tell '
+           'which. Confirm nothing is supposed to be reading it.'
     when tenant_column is null and owner_column is null
-         and count(*) filter (where policy_name is not null) > 0
       then 'INDIRECT — no tenant or owner column; scoped through a parent table. '
            'Static analysis cannot confirm this. Measure it.'
-    when tenant_column is null and owner_column is null
-      then 'n/a — no tenant or owner column on this table'
     when count(*) filter (where permissive and not scoped) > 0
       then 'CHECK — ' || count(*) filter (where permissive and not scoped)
            || ' permissive policy/policies not provably tenant-scoped'
