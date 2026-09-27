@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your scanner says this table is fine. It is leaking.</title>
+<meta name="description" content="A table can have row level security enabled, a policy that looks correct, and still hand every row to the wrong customer, because Postgres combines permissive policies with OR.">
+<style>
+  :root { color-scheme: light dark;
+    --fg:#16181d; --muted:#5b6270; --bg:#fff; --rule:#e3e5ea; --code-bg:#f6f7f9; --accent:#0b5cd5; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg:#e6e8ec; --muted:#9aa1ae; --bg:#101216; --rule:#272a31; --code-bg:#191c21; --accent:#7fb0ff; } }
+  * { box-sizing:border-box; }
+  body { margin:0 auto; max-width:40rem; padding:2.5rem 1.15rem 5rem; background:var(--bg); color:var(--fg);
+    font:1.06rem/1.68 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-text-size-adjust:100%; }
+  h1 { font-size:1.75rem; line-height:1.22; margin:0 0 1.4rem; letter-spacing:-.01em; }
+  h2 { font-size:1.16rem; margin:2.6rem 0 .8rem; line-height:1.35; }
+  p { margin:0 0 1.15rem; }
+  a { color:var(--accent); }
+  pre { background:var(--code-bg); border:1px solid var(--rule); border-radius:6px; padding:.85rem .95rem;
+    overflow-x:auto; font-size:.87rem; line-height:1.5; margin:0 0 1.15rem; }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+  hr { border:0; border-top:1px solid var(--rule); margin:3rem 0; }
+  .lead { font-size:1.1rem; }
+  .run { border:1px solid var(--rule); border-radius:8px; padding:1.1rem 1.15rem; margin:0 0 1.5rem; }
+  .run p:last-child { margin-bottom:0; }
+  .price { border-top:1px solid var(--rule); padding:1.1rem 0 .3rem; }
+  .price:last-of-type { border-bottom:1px solid var(--rule); margin-bottom:1.5rem; }
+  .amount { font-weight:700; }
+  .free { color:var(--muted); font-size:.95rem; }
+  label { display:block; font-size:.95rem; margin:0 0 .45rem; }
+  input,select,textarea,button { font:inherit; width:100%; }
+  input,select,textarea { padding:.62rem .7rem; border:1px solid var(--rule); border-radius:6px;
+    background:var(--bg); color:var(--fg); margin:0 0 .75rem; }
+  textarea { min-height:7rem; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.85rem; }
+  button { padding:.72rem 1rem; border:0; border-radius:6px; cursor:pointer; background:var(--fg);
+    color:var(--bg); font-weight:600; }
+  .hp { position:absolute; left:-9999px; }
+  .note { color:var(--muted); font-size:.92rem; }
+  .status { margin:.85rem 0 0; font-size:.95rem; }
+  .mark { font-weight:700; letter-spacing:-.02em; margin:0 0 2rem; font-size:1rem; }
+  .mark a { color:var(--fg); text-decoration:none; }
+  .byline { color:var(--muted); font-size:.95rem; margin:-.6rem 0 1.8rem; }
+  footer p { margin:0 0 .4rem; }
+  footer { margin-top:3.5rem; padding-top:1.2rem; border-top:1px solid var(--rule); color:var(--muted); font-size:.9rem; }
+</style>
+</head>
+<body>
+
+  <div class="mark"><a href="/">tenantcheck</a></div>
+
+  <h1>Your scanner says this table is fine. It is leaking.</h1>
+
+  <p class="byline">By Greg, at Augeo LLC. I build and audit multi-tenant Postgres. I wrote this after pointing my own tool at a database I had certified eight hours earlier and finding twelve policies I had missed.</p>
+
+  <p>I wrote a tool that checks whether one customer of a multi-tenant app can read another customer's rows. The first database I pointed it at was one I had personally fixed and personally proved was watertight, eight hours earlier.</p>
+  <p>It found twelve policies I had missed.</p>
+  <p>This is what it found, why every scanner on the market marks that table green, and why I did not catch it by reading the policies. I had read them carefully that morning.</p>
+  <h2>The shape</h2>
+  <p>Postgres combines permissive policies with OR.</p>
+  <p>That sentence is in the documentation and everybody nods at it. Here is what it means when you have shipped a few dozen policies and stopped reading them one at a time.</p>
+  <p>A table has two policies on it. The first is correct:</p>
+  <pre><code>create policy reports_tenant_read on reports
+  for select using (org_id = current_org());</code></pre>
+  <p>The second was written months earlier, by someone reasonable, to let support staff help customers:</p>
+  <pre><code>create policy reports_admin_read on reports
+  for select using (user_role() = 'admin');</code></pre>
+  <p>Each policy is sensible on its own. Together they say: you may read this row if it belongs to your organisation, OR if you are an admin of any organisation at all. The second clause does not mention tenancy, so it does not constrain it. Every row, every tenant, to anyone holding that role.</p>
+  <p>And the part that makes it survive audits: row level security is enabled, and a policy exists, and one of the policies is genuinely correct. Ask any scanner whether RLS is on for this table and the honest answer is yes.</p>
+  <h2>Why I did not see it</h2>
+  <p>I was fixing exactly this class of bug at the time. I went through the database methodically, found every policy that granted broad access, and bound each one to the caller's organisation. I measured the result: a second tenant's administrator could read zero rows belonging to the first. I wrote that number down and shipped it.</p>
+  <p>The number was true. It was also a statement about administrators.</p>
+  <p>The policies I had missed were not admin policies. They were a different role. A supervisor sees the people assigned to them, and those policies resolved through a helper function that looked like this:</p>
+  <pre><code>create function my_assigned_users() returns setof uuid
+language sql security definer as $$
+  select assigned_user_id from assignments
+   where supervisor_id = current_user_id()
+$$;</code></pre>
+  <p>No organisation test anywhere in it. Twelve policies across ten tables called that function. I had enumerated policies by searching for the text of the admin check, and these policies do not contain that text. My method was reasonable and it was shape-blind.</p>
+  <p>A supervisor-shaped leak is invisible to an admin-shaped test. My test was correct. My coverage was not, and the two produce an identical green result.</p>
+  <h2>What the measurement said</h2>
+  <p>I built the second tenant inside a transaction I rolled back, linked one supervisor across the boundary, which was the exact configuration the product was about to ship, and counted.</p>
+  <p>Before the fix, that supervisor could read a four-figure number of rows belonging to a customer in a different organisation, from a single assignment. Task records, daily activity, goals, historical scores. After the fix, zero.</p>
+  <p>One function was wrong. Twelve policies inherited it. Nothing in any policy's own text was incorrect.</p>
+  <h2>Three things this taught me about tools</h2>
+  <p>A flag is not a finding. The first version of my own tool marked twenty tables as leaking. They were fine. Their policies called helper functions, and a regular expression over policy text cannot see what a function body does. I was about to ship the exact failure I had spent a week criticising. A scanner that cries wolf at correct code. It now resolves function bodies before judging, and it reports CHECK where it cannot prove something, reserving LEAK for the cases that are certain.</p>
+  <p>For three versions, my tool could not do the thing its headline claims. It tested whether a policy referenced the organisation column. The leaking policy above references it, in the branch that works. So the tool read the policy at the top of this article and called it safe.</p>
+  <p>I did not find that by reading my own code. I found it by putting the leak back into a database and checking whether the tool noticed. It did not. A policy is safe only if every branch constrains the tenant, so each branch now gets split on OR and judged on its own.</p>
+  <p>If you take one thing from this article, let it be that rather than the Postgres trivia: a checker that has never been shown a failure is a checker with an unknown pass rate. Mine had been run dozens of times against clean databases and looked excellent.</p>
+  <p>The most dangerous table is the one that disappears. A later version joined tables to policies and quietly dropped every table that had no policies at all. That included a table with row level security switched off, which is the worst thing the tool can find. It reported a clean sheet because the bad row was not in it. An empty result and a clean result look identical, and only one of them is good news.</p>
+  <h2>What to do about it</h2>
+  <p>Read your policies, per table, and ask of each branch separately: does this clause constrain which tenant may read the row? Not the policy as a whole. The branch. One clause that does not is the whole table.</p>
+  <p>Then stop reading and measure, because reading is what failed me. Create a second tenant in a transaction you roll back, give it one user per role shape you actually have, such as admin, supervisor, owner and group member, then count the rows each of them can reach that belong to somebody else.</p>
+  <p>The expected answer is a column of zeros. If you get a number instead, that is one customer reading another customer's data.</p>
+  <p>And write down which role shapes you tested, beside the zero. A zero with no scope attached is how I got here.</p>
+  <h2>The part nobody plans for: the clean result</h2>
+  <p>Most databases come back clean. Mine did, on the second run. A column of zeros, plus one leftover table of my own with security switched off that I deleted the same day.</p>
+  <p>A clean result on Tuesday proves nothing on Friday, and Friday is when somebody adds three tables. Policies barely change; schemas change constantly, and a new table with no policy is the most common way this breaks. The dangerous week is never the week you ran the check.</p>
+  <p>That is also why a quiet week has to arrive as an email rather than as silence. Silence and success are indistinguishable, and I have spent this month fixing software that reported success over writes that never happened.</p>
+
+  <hr>
+
+  <h2>Also worth reading</h2>
+
+  <p><a href="/dead-tables.html"><strong>Row level security is on. Nobody can read the table.
+  Which of those is the bug?</strong></a> Enabling row level security with no policies denies
+  everyone except the table owner and the service role, so whoever built the table still reads it
+  fine while every user sees an empty list. Every scanner reports that state as healthy, and
+  nothing in the catalogue records whether you meant it.</p>
+
+  <hr>
+
+  <h2>Run it on your own database</h2>
+
+  <p>The harness is free, open source and permanently ungated. There is no signup and no email wall. Run it as often as you like and never pay me anything.</p>
+
+  <div class="run">
+    <p><strong>Read-only. Nothing is installed and no key is handed to anybody.</strong></p>
+    <pre><code>psql "$DATABASE_URL" -f tenant_isolation_audit.sql</code></pre>
+    <p class="note">Or paste it into the Supabase SQL editor.</p>
+    <p><a id="repo" href="#">github.com/&hellip;/tenant-isolation-audit</a></p>
+  </div>
+
+  <p>It prints one row per table. <strong>A column of zeros means no table is handing rows to the wrong tenant.</strong> A number instead of a zero means one customer can read another customer's data, and that line tells you which table.</p>
+
+  <p><strong>Nothing leaves your database.</strong> The harness reads your schema and the shape of your policies. It never selects a row from one of your tables and it never sends anything anywhere. You run it, you read the output, and if you never speak to me that is a perfectly good outcome.</p>
+
+  <h2>If you want more than the tool</h2>
+
+  <p>Two things you can buy. Both are work I do, not data I hold.</p>
+
+  <div class="price">
+    <p><span class="amount">Free, forever.</span> The harness.<br>
+    <span class="free">Run it yourself as often as you like. No account, no email, no limit.</span></p>
+  </div>
+
+  <div class="price">
+    <p><span class="amount">$249 once.</span> The audit.<br>
+    I run it against your database, work out which of the findings actually matter and in what order to fix them, and write it up as a document you can hand to whoever asked you for it.</p>
+    <p><a href="https://buy.stripe.com/8x2eVe3TRebb94wcNs6kg0s">Buy the audit</a></p>
+  </div>
+
+  <div class="price">
+    <p><span class="amount">$29 a month.</span> The record.<br>
+    It runs every week on its own and watches the tables you add after the audit, which is where this usually breaks. You get the dated result by email, <strong>including the weeks when nothing happened</strong>, because a week with nothing wrong in it is the evidence.</p>
+    <p><a href="https://buy.stripe.com/dRmdRa3TR3wx6WocNs6kg0t">Start the weekly record</a></p>
+  </div>
+
+  <p>To be plain about what that second one is, since it is the question I would ask: <strong>you are not buying your own data back.</strong> Your data never moves. You are buying a dated history that says isolation held, which is what a security questionnaire asks for and what almost nobody can produce.</p>
+
+  <h2>The ask</h2>
+
+  <p class="lead"><strong>Run the harness, then paste the output below. I will tell you which of the findings actually matter.</strong></p>
+
+  <p class="note">The output contains no data from your tables. If it is a column of zeros I will say so and you will have lost five minutes.</p>
+
+  <form id="f" method="post">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" required autocomplete="email" placeholder="you@company.com">
+
+    <label for="platform">What is it running on</label>
+    <select id="platform" name="platform">
+      <option value="supabase">Supabase</option>
+      <option value="postgres">Postgres, self-hosted</option>
+      <option value="rds">RDS or Aurora</option>
+      <option value="neon">Neon</option>
+      <option value="other">Something else</option>
+    </select>
+
+    <label for="output">Your harness output</label>
+    <textarea id="output" name="output" placeholder="Paste the table of verdicts here."></textarea>
+
+    <input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+    <input type="hidden" name="product" value="tenantcheck">
+    <input type="hidden" name="source" value="tenantcheck.dev">
+
+    <button type="submit">Send it to me</button>
+    <p class="status" id="status" role="status"></p>
+  </form>
+
+  <footer>
+    <p>The harness is MIT licensed. The audit and the weekly record are paid work.</p>
+    <p>Card statements show AUGEO* TENANTCHECK.</p>
+    <p><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms and refunds</a> &middot; <a href="mailto:tenantcheck@augeo-hq.com">tenantcheck@augeo-hq.com</a></p>
+    <p>Augeo LLC, 732 S 6th St, Ste N, Las Vegas, NV 89101</p>
+    <p>Copyright 2026 Augeo LLC. All rights reserved.</p>
+  </footer>
+
+<script>
+  // NOT WIRED YET, ON PURPOSE. The capture endpoint is Charlie's shared form and
+  // I do not have it. Set CAPTURE_ENDPOINT and REPO_URL and the page is live.
+  //
+  // Until then the form refuses rather than pretending. A form that appears to
+  // submit and quietly drops the message is the exact failure this article is
+  // about: silence and success look identical. It will not do that here.
+  var CAPTURE_ENDPOINT = "https://venture-capture-jeff-7507s-projects.vercel.app/api/subscribe";
+  var REPO_URL = "https://github.com/Agent-Artemis/tenant-isolation-audit";
+
+  var repo = document.getElementById("repo");
+  if (REPO_URL) { repo.href = REPO_URL; repo.textContent = REPO_URL.replace(/^https?:\/\//, ""); }
+  else { repo.removeAttribute("href"); repo.textContent = "github.com/…/tenant-isolation-audit (link pending)"; }
+
+  document.getElementById("f").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var s = document.getElementById("status");
+    if (!CAPTURE_ENDPOINT) { s.textContent = "This form is not connected yet. Nothing was sent."; return; }
+    var fd = new FormData(e.target);
+    // The capture endpoint keeps a fixed segment vocabulary for geography.
+    // A database platform is not geography, so it travels in source rather
+    // than being smuggled into a field that means something else.
+    var plat = fd.get("platform");
+    if (plat) { fd.set("source", "tenantcheck.dev?platform=" + plat); }
+    fd.delete("platform");
+    s.textContent = "Sending…";
+    fetch(CAPTURE_ENDPOINT, { method: "POST", body: fd })
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        s.textContent = "You are on the list. The confirmation email goes out when sending resumes, and I will read your output either way.";
+        e.target.reset();
+      })
+      .catch(function (err) {
+        s.textContent = "That did not send (" + err.message + "). Nothing was saved. Try again, or email me.";
+      });
+  });
+</script>
+</body>
+</html>

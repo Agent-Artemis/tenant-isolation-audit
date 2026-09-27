@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy</title>
+<meta name="robots" content="index,follow">
+<style>
+  :root { color-scheme: light dark;
+    --fg:#16181d; --muted:#5b6270; --bg:#fff; --rule:#e3e5ea; --accent:#0b5cd5; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg:#e6e8ec; --muted:#9aa1ae; --bg:#101216; --rule:#272a31; --accent:#7fb0ff; } }
+  * { box-sizing:border-box; }
+  body { margin:0 auto; max-width:40rem; padding:2.5rem 1.15rem 5rem; background:var(--bg); color:var(--fg);
+    font:1.06rem/1.68 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-text-size-adjust:100%; }
+  .mark { font-weight:700; letter-spacing:-.02em; margin:0 0 2rem; font-size:1rem; }
+  .mark a { color:var(--fg); text-decoration:none; }
+  h1 { font-size:1.55rem; line-height:1.25; margin:0 0 .5rem; }
+  h2 { font-size:1.1rem; margin:2.2rem 0 .7rem; }
+  p, li { margin:0 0 1rem; }
+  ul { padding-left:1.15rem; }
+  a { color:var(--accent); }
+  .updated { color:var(--muted); font-size:.95rem; margin:0 0 2rem; }
+  footer { margin-top:3.5rem; padding-top:1.2rem; border-top:1px solid var(--rule); color:var(--muted); font-size:.9rem; }
+  footer p { margin:0 0 .4rem; }
+</style>
+</head>
+<body>
+  <div class="mark"><a href="/">tenantcheck</a></div>
+  <h1>Privacy</h1>
+  <p class="updated">Last updated 22 September 2026.</p>
+  <p>This page describes what tenantcheck collects, why, and how to get rid of it. tenantcheck is operated by Augeo LLC.</p>
+  <h2>What we collect</h2>
+  <p>If you use the form on the front page, we collect the email address you type, the database platform you select, and whatever you paste into the output box. Nothing else. There is no analytics script, no advertising pixel and no third party tracker anywhere on this site.</p>
+  <p>If you buy the audit or the weekly record, the payment is handled by Stripe. We never see or store your card details. Stripe holds them and tells us only that a payment succeeded, along with the email you gave them.</p>
+  <h2>What the harness does not collect</h2>
+  <p>The harness is a SQL file you run yourself against your own database. It reads the system catalogue: table names, whether row level security is enabled, and the text of your policies. It never selects a row from one of your tables, it never transmits anything, and it has no network access of any kind. If you never use the form, we never receive anything at all.</p>
+  <p>If you do paste the output into the form, you are sending us schema and policy shape. You can read exactly what that contains before you send it, because you ran the file and it printed to your screen.</p>
+  <h2>Why we hold it</h2>
+  <p>To reply to you about the findings, and if you asked for it, to send the weekly result. That is the whole purpose.</p>
+  <h2>What we never do</h2>
+  <p>We do not sell your data. We do not rent, trade or share it with anyone for marketing. We do not use it to train anything.</p>
+  <h2>Email, and how to stop it</h2>
+  <p>Email is double opt in. You will get one message asking you to confirm, and if you do not confirm we do not send you anything else. Every message we send carries an unsubscribe link that works immediately and without a reply from us.</p>
+  <p>To be removed entirely, including anything you have pasted, write to tenantcheck@augeo-hq.com and say so. We will delete it and confirm that we have.</p>
+  <h2>How long we keep it</h2>
+  <p>Email addresses stay until you unsubscribe or ask for deletion. Pasted harness output is deleted within 90 days of the conversation ending, unless you are a paying subscriber, in which case it is kept for as long as you are subscribed so that the record has a history to compare against.</p>
+  <h2>Who to contact</h2>
+  <p>tenantcheck@augeo-hq.com reaches a person. The postal address is at the foot of this page.</p>
+  <footer>
+    <p><a href="/">tenantcheck</a> &middot; <a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms and refunds</a> &middot; <a href="mailto:tenantcheck@augeo-hq.com">tenantcheck@augeo-hq.com</a></p>
+    <p>Augeo LLC, 732 S 6th St, Ste N, Las Vegas, NV 89101</p>
+    <p>Copyright 2026 Augeo LLC. All rights reserved.</p>
+  </footer>
+</body>
+</html>

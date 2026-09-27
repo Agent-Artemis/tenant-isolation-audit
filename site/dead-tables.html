@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Row level security is on. Nobody can read the table.</title>
+<meta name="description" content="Row level security enabled with no policies denies everyone except the table owner and the service role. Every scanner reports it as healthy. It is either a deliberate lockdown or a silent outage, and the catalogue cannot tell you which.">
+<link rel="canonical" href="https://tenantcheck.dev/dead-tables.html">
+<style>
+  :root { color-scheme: light dark;
+    --fg:#16181d; --muted:#5b6270; --bg:#fff; --rule:#e3e5ea; --code-bg:#f6f7f9; --accent:#0b5cd5; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg:#e6e8ec; --muted:#9aa1ae; --bg:#101216; --rule:#272a31; --code-bg:#191c21; --accent:#7fb0ff; } }
+  * { box-sizing:border-box; }
+  body { margin:0 auto; max-width:40rem; padding:2.5rem 1.15rem 5rem; background:var(--bg); color:var(--fg);
+    font:1.06rem/1.68 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-text-size-adjust:100%; }
+  h1 { font-size:1.75rem; line-height:1.22; margin:0 0 1.4rem; letter-spacing:-.01em; }
+  h2 { font-size:1.16rem; margin:2.6rem 0 .8rem; line-height:1.35; }
+  p { margin:0 0 1.15rem; }
+  a { color:var(--accent); }
+  pre { background:var(--code-bg); border:1px solid var(--rule); border-radius:6px; padding:.85rem .95rem;
+    overflow-x:auto; font-size:.87rem; line-height:1.5; margin:0 0 1.15rem; }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+  hr { border:0; border-top:1px solid var(--rule); margin:3rem 0; }
+  .lead { font-size:1.1rem; }
+  .run { border:1px solid var(--rule); border-radius:8px; padding:1.1rem 1.15rem; margin:0 0 1.5rem; }
+  .run p:last-child { margin-bottom:0; }
+  .price { border-top:1px solid var(--rule); padding:1.1rem 0 .3rem; }
+  .price:last-of-type { border-bottom:1px solid var(--rule); margin-bottom:1.5rem; }
+  .amount { font-weight:700; }
+  .free { color:var(--muted); font-size:.95rem; }
+  label { display:block; font-size:.95rem; margin:0 0 .45rem; }
+  input,select,textarea,button { font:inherit; width:100%; }
+  input,select,textarea { padding:.62rem .7rem; border:1px solid var(--rule); border-radius:6px;
+    background:var(--bg); color:var(--fg); margin:0 0 .75rem; }
+  textarea { min-height:7rem; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.85rem; }
+  button { padding:.72rem 1rem; border:0; border-radius:6px; cursor:pointer; background:var(--fg);
+    color:var(--bg); font-weight:600; }
+  .hp { position:absolute; left:-9999px; }
+  .note { color:var(--muted); font-size:.92rem; }
+  .status { margin:.85rem 0 0; font-size:.95rem; }
+  .mark { font-weight:700; letter-spacing:-.02em; margin:0 0 2rem; font-size:1rem; }
+  .mark a { color:var(--fg); text-decoration:none; }
+  .byline { color:var(--muted); font-size:.95rem; margin:-.6rem 0 1.8rem; }
+  footer p { margin:0 0 .4rem; }
+  footer { margin-top:3.5rem; padding-top:1.2rem; border-top:1px solid var(--rule); color:var(--muted); font-size:.9rem; }
+</style>
+</head>
+<body>
+<main>
+
+  <h1>Row level security is on. Nobody can read the table. Which of those is the bug?</h1>
+
+  <p class="lede">There is a state a Postgres table can be in that every scanner I have tried
+  reports as healthy, and that is either exactly what you intended or a silent outage you have
+  been running for months. The catalogue cannot tell you which.</p>
+
+  <p>The state is simple: <strong>row level security is enabled and there are no policies at
+  all.</strong></p>
+
+  <h2>What actually happens</h2>
+  <p>Enabling row level security with no policy does not open a table. It closes it. Postgres
+  denies by default and policies are the only thing that grants back, so zero policies means
+  zero rows for anybody the policies would have applied to.</p>
+  <p>Here it is on a live database, inside a transaction that was rolled back:</p>
+  <pre><code>catalogue: relrowsecurity                  true
+catalogue: policy count                    0
+rows an authenticated tenant reads         0
+rows anon reads                            0
+rows the table owner reads                 3</code></pre>
+  <p>Then one policy is added and nothing else changes:</p>
+  <pre><code>policy count after adding ONE policy       1
+rows an authenticated tenant reads now     3</code></pre>
+
+  <h2>The line that matters is the third one from the bottom</h2>
+  <p><strong>The table owner still reads all three rows.</strong> So does anything connecting
+  with the service role, because it bypasses row level security by design.</p>
+  <p>That is the whole reason this survives. The person who built the table reads it fine. The
+  migration that created it reads it fine. A smoke test written by the same person, using the
+  same credentials, passes. The only people who see nothing are your users, and they do not get
+  an error. They get an empty list, a zero, a dashboard panel that renders correctly and says
+  there is no data.</p>
+  <p>An empty result and a clean result look identical, and only one of them is good news.</p>
+
+  <h2>Why scanners call it healthy</h2>
+  <p>Most row level security checks answer one question: is RLS switched on? That is a boolean,
+  and here the boolean is true. A table locked so hard that nothing can read it scores exactly
+  the same as a table with correct, well scoped policies.</p>
+  <p>The direction of that error is the bad one. A false alarm wastes an afternoon. A false
+  all-clear means nobody ever looks.</p>
+
+  <h2>And static analysis genuinely cannot settle it</h2>
+  <p>This is the honest part, and it is why the audit reports this case as ambiguous rather than
+  pretending to judge it. Both of these produce the identical catalogue state:</p>
+  <ol>
+    <li>A table only your backend is ever supposed to touch, locked to the service role on
+    purpose. Correct, deliberate, and exactly what you want.</li>
+    <li>A table whose policies were dropped in a migration, or never written because the pull
+    request that added them was reverted, or written against a role name that was later
+    renamed.</li>
+  </ol>
+  <p>There is nothing in <code>pg_class</code>, <code>pg_policy</code> or anywhere else that
+  records which one you meant. Intent is not stored in the database. Any tool that tells you
+  confidently which of the two you are looking at is guessing, and it will be wrong on a
+  schedule.</p>
+  <p>So the audit returns <code>DEAD</code>, says in the output text that it cannot tell the
+  difference, and tells you what would settle it.</p>
+
+  <h2>The one question that settles it</h2>
+  <p><strong>What is supposed to be reading this table?</strong></p>
+  <p>If the answer is "only the backend, with the service role", you are done, and it is worth a
+  comment on the table so the next person does not have to ask.</p>
+  <p>If the answer names a user, a role, a dashboard or a page, you have an outage, and the
+  measurement is short:</p>
+  <pre><code>begin;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"&lt;a real user id&gt;","role":"authenticated"}';
+select count(*) from your_table;
+rollback;</code></pre>
+  <p>A zero there, where the owner sees rows, is your answer. Do it inside a transaction you
+  roll back and it costs you nothing.</p>
+
+  <h2>What this cost us</h2>
+  <p>Our own tool emitted this verdict for four days with no documentation. The SQL could return
+  six verdicts and the README explained four. <code>DEAD</code> was one of the two missing, which
+  made it the worst possible omission: a reader got a result that looked like a finding, with
+  nothing to look it up in, and no way to know whether it was good news or a broken table.</p>
+  <p>It was found by a colleague reading the query and the README side by side and counting. Not
+  by a test, because there was no test. There is one now, and it fails the build if the two files
+  ever disagree again.</p>
+  <p>The verdict is documented, the output text states its own ambiguity so the explanation
+  travels with the result rather than only with the docs, and a branch that turned out to be
+  unreachable was deleted rather than described.</p>
+
+  <h2>The general version</h2>
+  <p>A checker that has never been shown a failure is a checker with an unknown pass rate. A
+  summary that cannot see part of its input is not a summary. And a tool that gives you a verdict
+  your documentation does not explain has handed you the same problem you bought it to solve: an
+  answer that looks clean, and is not.</p>
+
+  <div class="run">
+    <p><strong>The audit is one read-only SQL file, MIT licensed, and it reads
+    <code>pg_catalog</code> only.</strong></p>
+    <p><a href="https://github.com/Agent-Artemis/tenant-isolation-audit">github.com/Agent-Artemis/tenant-isolation-audit</a></p>
+    <p class="note">If you want the output read by someone who will tell you which findings
+    matter on your schema, that is <a href="/">the paid part</a>.</p>
+  </div>
+
+</main>
+<footer>
+    <p>The harness is MIT licensed. The audit and the weekly record are paid work.</p>
+    <p>Card statements show AUGEO* TENANTCHECK.</p>
+    <p><a href="/privacy.html">Privacy</a> &middot; <a href="/terms.html">Terms and refunds</a> &middot; <a href="mailto:tenantcheck@augeo-hq.com">tenantcheck@augeo-hq.com</a></p>
+    <p>Augeo LLC, 732 S 6th St, Ste N, Las Vegas, NV 89101</p>
+    <p>Copyright 2026 Augeo LLC. All rights reserved.</p>
+  </footer>
+</body>
+</html>
