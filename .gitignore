@@ -1,2 +1,45 @@
+# WHITELIST, NOT A BLOCKLIST, BECAUSE THIS REPO IS PUBLIC.
+#
+# A pattern list enumerates the bad and is never finished: it catches the secret
+# you thought of and not the one inline in a script. Where the consequence of a
+# mistake is PUBLICATION, enumerate the good instead. Ignore everything, then
+# allow only what belongs.
+#
+# Proved both ways on 2026-10-05, not just one:
+#   negative control  a planted fake key file is NOT staged by add -A
+#   positive control  a new legitimate file in an allowed path IS staged
+# A whitelist that stages nothing would pass the first test and break the repo.
+#
+# ⚠️ THE COST, STATED: a new file in a path not listed below is silently NOT
+# committed. That is the trade, and it is the right way round for a public repo.
+# If something you added does not appear in git status, this file is why.
+
+# 1. Ignore everything.
+*
+
+# 2. But descend into directories, or nothing inside them can be matched.
+!*/
+
+# 3. Allow what belongs.
+!.gitignore
+!LICENSE
+!README.md
+!ARTICLE.md
+!ARTICLE-for-syndication.md
+!DEAD-TABLES.md
+!tenant_isolation_audit.sql
+!check-verdicts.sh
+!package.json
+!package-lock.json
+!server.json
+!mcp/README.md
+!mcp/test.js
+!mcp/src/*.js
+!site/*.html
+!site/.vercelignore
+
+# 4. And never these, even inside an allowed directory.
 node_modules/
 site/.vercel/
+.env
+.env.*
